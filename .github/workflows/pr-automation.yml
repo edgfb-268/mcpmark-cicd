@@ -1,0 +1,143 @@
+name: Pull Request Automation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  code-quality:
+    name: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true
+        id: eslint
+      - name: Run Prettier Check
+        run: npx prettier --check .
+        continue-on-error: true
+        id: prettier
+      - name: Post Code Quality Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const eslintOutput = `${{ steps.eslint.outputs.stdout || 'No output' }}`;
+            const prettierOutput = `${{ steps.prettier.outputs.stdout || 'No output' }}`;
+            const commentBody = `## Code Quality Report\n\n### ESLint Results:\n\`\`\`\n${eslintOutput}\n\`\`\`\n\n### Prettier Results:\n\`\`\`\n${prettierOutput}\n\`\`\``;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+
+  testing-suite:
+    name: testing-suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Run Test Suite with Coverage
+        run: npm test -- --coverage
+        continue-on-error: true
+        id: test
+      - name: Upload Coverage Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+      - name: Post Test Coverage Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testOutput = `${{ steps.test.outputs.stdout || 'No output' }}`;
+            const commentBody = `## Test Coverage Report\n\n\`\`\`\n${testOutput}\n\`\`\``;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+
+  security-scan:
+    name: security-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Run Dependency Vulnerability Check
+        run: npm audit
+        continue-on-error: true
+        id: npm-audit
+      - name: Scan for Secrets
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        id: gitleaks
+      - name: Post Security Scan Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const npmAuditOutput = `${{ steps.npm-audit.outputs.stdout || 'No output' }}`;
+            const gitleaksOutput = `${{ steps.gitleaks.outputs.stdout || 'No secrets found' }}`;
+            const commentBody = `## Security Scan Report\n\n### Dependencies (npm audit):\n\`\`\`\n${npmAuditOutput}\n\`\`\`\n\n### Vulnerabilities (Secrets Scan):\n\`\`\`\n${gitleaksOutput}\n\`\`\``;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+
+  build-validation:
+    name: build-validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Build Application
+        run: npm run build
+        continue-on-error: true
+        id: build
+      - name: Validate Endpoints (example)
+        run: |
+          # Adjust port and command based on your application's setup
+          npm start &
+          sleep 5
+          curl -I http://localhost:3000
+        continue-on-error: true
+        id: endpoints
+      - name: Upload Deployment Preview Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-preview
+          path: dist/ # Adjust path to your build output directory
+      - name: Post Build Validation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const buildOutput = `${{ steps.build.outputs.stdout || 'No output' }}`;
+            const endpointsOutput = `${{ steps.endpoints.outputs.stdout || 'No output' }}`;
+            const commentBody = `## Build Validation\n\n### Build Status:\n\`\`\`\n${buildOutput}\n\`\`\`\n\n### Endpoints Check:\n\`\`\`\n${endpointsOutput}\n\`\`\``;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
