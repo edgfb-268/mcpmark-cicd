@@ -1,0 +1,1 @@
+function test() {\n  let x = 5;\n  return x;\n}
